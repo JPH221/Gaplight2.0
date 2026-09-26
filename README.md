@@ -1,6 +1,5 @@
-# Gaplight2.0
-A py software run on Streamlit for collge students to plan your gap time.
-# 隙光 GapLight
+[README.md](https://github.com/user-attachments/files/32677184/README.md)
+# 隙光 GapLight2.1
 
 面向大学新生的自适应课隙规划工具 —— 本地运行的 Streamlit 网页应用。
 
@@ -12,12 +11,15 @@ A py software run on Streamlit for collge students to plan your gap time.
 
 ## 运行方式
 
+需要 Python 3.9 或以上（推荐 3.11~3.13）。
+
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-浏览器打开终端里给出的地址（默认 https://gaplight.streamlit.app/ 即可使用,但是无法存储数据。） 
+浏览器打开终端里给出的地址（默认 <http://gaplight.streamlit.app/）即可使用。>  
+首次运行如出现输入 Email 的提示，直接回车跳过即可。  
 
 ## 功能对照
 
@@ -25,7 +27,7 @@ streamlit run app.py
 | - | ------------------------------------------------ | ------------- |
 | 1 | 课表手动录入（一学期一次，支持单双周、上课地点）＋ 临时活动单独添加               | 「课表与活动」       |
 | 2 | 任务添加＋4 类模板自动拆分（每步 15~25 分钟一个番茄，可改名/改时长/删除，附假设声明） | 「任务管理」        |
-| 3 | 每日编排：选精力状态 → 硬约束＋四因素打分生成计划，每项附具体理由               | 「今日计划」        |
+| 3 | 每日编排：选日子（今天/明天）＋精力状态 → 硬约束＋四因素打分生成计划，每项附具体理由     | 「今日计划」        |
 | 4 | 局部重排：冲突/未完成/跳过/超时/临近截止/改精力/主动触发，只动当前之后且未锁定项      | 「今日计划」        |
 | 5 | 用户决策与记录：变更说明＋一键确认/拒绝；自动记录全部操作                    | 「今日计划」「记录与导出」 |
 | 6 | 每日舒缓文案（可更换/关闭，随计划保存）＋ 实验原始记录导出                   | 「今日计划」「记录与导出」 |
