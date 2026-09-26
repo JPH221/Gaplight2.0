@@ -17,7 +17,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-浏览器打开终端里给出的地址（默认 <）即可使用,但是无法存储数据。>  
+浏览器打开终端里给出的地址（默认 https://gaplight.streamlit.app/ 即可使用,但是无法存储数据。） 
 
 ## 功能对照
 
