@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, date as dt_date
+from datetime import datetime, timedelta, date as dt_date
 
 import streamlit as st
 
@@ -24,6 +24,7 @@ from gaplight.scheduler import (fixed_blocks_for_date, compute_gaps,
 st.set_page_config(page_title="隙光 GapLight", page_icon="🌤", layout="wide")
 
 TODAY = dt_date.today().strftime("%Y-%m-%d")
+TOMORROW = (dt_date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
 
 REPLAN_TRIGGERS = [
     "临时活动冲突", "标记未完成或跳过", "实际耗时超计划",
@@ -228,10 +229,12 @@ def page_schedule(data: dict) -> None:
                     save(data)
                     store.log_event("录入活动", {"title": title,
                                                "date": day.strftime("%Y-%m-%d")})
-                    # 临时活动冲突 → 触发局部重排提案
-                    if day.strftime("%Y-%m-%d") == TODAY and store.get_plan(data, TODAY):
-                        make_proposal(data, TODAY, f"临时活动冲突：{title}")
-                        st.toast("检测到与今日计划可能冲突，已生成重排提案，请到「今日计划」确认。")
+                    # 临时活动冲突 → 触发局部重排提案（按活动所在日期）
+                    ev_date = day.strftime("%Y-%m-%d")
+                    if store.get_plan(data, ev_date):
+                        make_proposal(data, ev_date, f"临时活动冲突：{title}")
+                        st.toast(f"检测到与 {ev_date} 的计划可能冲突，"
+                                 f"已生成重排提案，请到「今日计划」对应日子确认。")
                     st.rerun()
 
         events = sorted(store.get_events(data),
@@ -352,10 +355,18 @@ def page_tasks(data: dict) -> None:
 # ---------------------------------------------------------------- 页面：今日计划
 
 
-def _render_proposal(data: dict) -> None:
-    """展示待确认的新方案：变更说明 + 一键确认 / 拒绝。"""
+def _render_proposal(data: dict, date_str: str) -> None:
+    """展示待确认的新方案：变更说明 + 一键确认 / 拒绝。
+
+    date_str：当前查看的日子。提案属于别的日子时提示但不展示操作，
+    避免"看着今天的页面、确认了明天的方案"。
+    """
     proposal = st.session_state.get("proposal")
     if not proposal:
+        return
+    if proposal.get("date") != date_str:
+        st.info(f"📋 有一份「{proposal.get('date')}」的新方案待确认，"
+                f"切换到对应日子即可查看。")
         return
     result = proposal["result"]
     st.subheader("📋 新的日程方案（待确认）")
@@ -389,33 +400,40 @@ def _render_proposal(data: dict) -> None:
 
 
 def page_today(data: dict) -> None:
-    week_no, parity = week_of(TODAY, data["settings"])
-    st.header(f"🌞 今日计划（{TODAY} · 第 {week_no} 周 · {parity}）")
+    # 选择规划哪一天：今天 或 明天
+    day_pick = st.radio("规划哪一天", ["今天", "明天"],
+                        horizontal=True, key="day_pick")
+    date_str = TODAY if day_pick == "今天" else TOMORROW
+    is_today = date_str == TODAY
+    day_word = "今日" if is_today else "明日"
+
+    week_no, parity = week_of(date_str, data["settings"])
+    st.header(f"🌞 {day_word}计划（{date_str} · 第 {week_no} 周 · {parity}）")
 
     # 校园跑学期进度
-    ri = run_status(data, TODAY, data["settings"])
+    ri = run_status(data, date_str, data["settings"])
     if ri["in_season"]:
         st.caption(f"🏃 校园跑：学期 {ri['done_total']}/{ri['target_total']} 次　"
                    f"本周 {ri['this_week']}/{ri['weekly_target']} 次"
                    + ("　⚠️ 进度落后，本周加跑一次" if ri["behind"] else ""))
 
     # 待确认提案优先展示
-    _render_proposal(data)
+    _render_proposal(data, date_str)
 
-    plan = store.get_plan(data, TODAY)
+    plan = store.get_plan(data, date_str)
 
-    # 首次使用：选择精力状态
+    # 该日尚无计划：选择精力状态
     if not plan:
-        st.subheader("今天感觉状态怎么样？")
-        energy = st.radio("选择今天的精力状态", ENERGY_LEVELS, index=1,
+        st.subheader(f"为{day_pick}选个精力状态：")
+        energy = st.radio(f"选择{day_pick}的精力状态", ENERGY_LEVELS, index=1,
                           horizontal=True, key="energy_pick")
         st.caption("精力状态决定留白上限：低精力 ≤50%｜中精力 ≤65%｜高精力 ≤75%，"
                    "任何状态都不会排满。")
-        if st.button("🧭 生成今日计划", type="primary"):
-            make_proposal(data, TODAY, "首次生成今日计划")
+        if st.button(f"🧭 生成{day_word}计划", type="primary"):
+            make_proposal(data, date_str, f"首次生成{day_word}计划")
             save(data)
             st.rerun()
-        _render_gaps(data, TODAY)
+        _render_gaps(data, date_str)
         return
 
     # 每日舒缓文案（随计划保存，可更换 / 关闭）
@@ -446,15 +464,15 @@ def page_today(data: dict) -> None:
                 trig = f"修改当日精力：{plan.energy}→{new_energy}（{trigger}）"
                 plan.energy = new_energy
                 store.put_plan(data, plan)
-            make_proposal(data, TODAY, trig)
+            make_proposal(data, date_str, trig)
             save(data)
             st.rerun()
 
     # 计划明细
-    st.subheader("📅 今日安排")
+    st.subheader(f"📅 {day_word}安排")
     if not plan.items:
-        st.write("今天目前没有安排任何任务，课隙全部留白。")
-    now_min = now_minutes()
+        st.write(f"{day_pick}目前没有安排任何任务，课隙全部留白。")
+    now_min = now_minutes() if is_today else None
     for it in plan.items:
         # 番茄休息项：轻量展示，无操作按钮
         if it.kind == KIND_REST:
@@ -475,27 +493,27 @@ def page_today(data: dict) -> None:
             if it.status == ITEM_PLANNED:
                 b1, b2, b3, b4, _ = st.columns([1, 1, 1, 1, 3])
                 if b1.button("✅ 完成", key=f"done_{it.id}"):
-                    set_item_status(data, TODAY, it, ITEM_DONE)
+                    set_item_status(data, date_str, it, ITEM_DONE)
                     save(data)
                     st.rerun()
                 if not is_run:
                     if b2.button("⚠️ 未完成", key=f"miss_{it.id}"):
-                        set_item_status(data, TODAY, it, ITEM_MISSED)
+                        set_item_status(data, date_str, it, ITEM_MISSED)
                         # 标记未完成 → 自动触发重排提案
-                        make_proposal(data, TODAY,
+                        make_proposal(data, date_str,
                                       f"标记未完成：{it.task_name}·{it.step_name}")
                         save(data)
                         st.rerun()
                 if b3.button("⏭️ 跳过", key=f"skip_{it.id}"):
-                    set_item_status(data, TODAY, it, ITEM_SKIPPED)
-                    make_proposal(data, TODAY,
+                    set_item_status(data, date_str, it, ITEM_SKIPPED)
+                    make_proposal(data, date_str,
                                   f"标记跳过：{it.task_name}·{it.step_name}")
                     save(data)
                     st.rerun()
                 if not is_run and b4.button("🔒 锁定" if not it.locked else "🔓 解锁",
                                             key=f"lock_{it.id}"):
                     it.locked = not it.locked
-                    plan2 = store.get_plan(data, TODAY)
+                    plan2 = store.get_plan(data, date_str)
                     for x in plan2.items:
                         if x.id == it.id:
                             x.locked = it.locked
@@ -504,11 +522,11 @@ def page_today(data: dict) -> None:
                     store.log_event("锁定" if it.locked else "解锁",
                                     {"task": it.task_name, "step": it.step_name})
                     st.rerun()
-            if not is_run and it.status == ITEM_PLANNED \
+            if is_today and not is_run and it.status == ITEM_PLANNED \
                     and hhmm_to_min(it.end) <= now_min:
                 st.caption("⏰ 该时段已过去，可标记完成 / 未完成 / 跳过。")
 
-    _render_gaps(data, TODAY)
+    _render_gaps(data, date_str)
 
 
 def _render_gaps(data: dict, date_str: str) -> None:
@@ -519,10 +537,11 @@ def _render_gaps(data: dict, date_str: str) -> None:
     blocks = fixed_blocks_for_date(date_str, courses, events, settings)
     now_min = now_minutes() if date_str == TODAY else None
     gaps = compute_gaps(date_str, blocks, settings, now_min)
-    with st.expander("🕳 今日课隙总览（每隙先扣 "
+    day_word = "今日" if date_str == TODAY else "明日"
+    with st.expander(f"🕳 {day_word}课隙总览（每隙先扣 "
                      f"{settings['transition_minutes']} 分钟过渡时间）"):
         if not blocks:
-            st.write("今天没有固定安排。")
+            st.write(f"{day_word}没有固定安排。")
         rows = []
         for g in gaps:
             state = "已过" if g["past"] else (
